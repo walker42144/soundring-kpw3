@@ -35,6 +35,7 @@ function M.run(o)
   if not sleeping and o.app.reconcile_at and now>=o.app.reconcile_at then o.app.reconcile_at=nil;o.app:refresh() end
   if not sleeping and now-last_poll>=interval then last_poll=now;o.app:refresh() end
   o.http:poll(not sleeping)
+  if not sleeping and o.app.artist_info and o.app.artist_info.poll then o.app.artist_info:poll() end
   if not sleeping and o.covers then o.covers:poll() end
   if not sleeping and o.artist_covers then o.artist_covers:poll() end
   if dirty and not sleeping then

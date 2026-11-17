@@ -17,6 +17,14 @@ function Store:display_name(id,original)
  local v=self:load(id);if v then for _,name in ipairs(v.aliases)do if name:find('[\228-\233]') then return require('soundring.lyrics_online').simplified(name) end end end;return original
 end
 function Store:image_path(id)if valid(id) then return self.dir..'/'..id..'.gray' end end
+function Store:can_cache_image(id,bytes)
+ local target=self:image_path(id);if not target or type(bytes)~='number' or bytes<0 then return false end
+ if not self.storage.list_dir or not self.storage.file_size then return true end
+ local total=0;for _,name in ipairs(self.storage:list_dir(self.dir))do
+  if name:match('^[%w]+%.gray$') then local n=self.storage:file_size(self.dir..'/'..name);if not n then return false end;total=total+n end
+ end
+ return total-(self.storage:file_size(target) or 0)+bytes <= (self.image_budget_bytes or 64*1024*1024)
+end
 function Store:save_alias(id,original,alias)
  local p=self:path(id);if not p or type(alias)~='string' or #alias==0 or #alias>200 then return false end
  local v=self:load(id) or {version=1,id=id,aliases={}};v.name=type(original)=='string' and original:sub(1,200) or v.name

@@ -35,7 +35,7 @@ function Http:build_script(opts, paths)
     local cmd = {
         util.shell_quote(self.curl).." -sS -L --connect-timeout 10 --max-time " .. timeout,
         "--max-filesize " .. max_bytes,
-        "-A " .. util.shell_quote("KDash/0.1 (Kindle)"),
+        "-A " .. util.shell_quote("SoundRing/0.1 (https://github.com/walker42144/soundring-kpw3/issues)"),
     }
     if self.cacert and self.cacert ~= "" then
         cmd[#cmd + 1] = "--cacert " .. util.shell_quote(self.cacert)

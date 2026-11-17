@@ -1,6 +1,6 @@
 # SoundRing for Kindle Paperwhite 3
 
-[简体中文](README.zh-CN.md) · [Releases](../../releases)
+[简体中文](README.zh-CN.md) · [Changelog](CHANGELOG.md) · [Releases](../../releases)
 
 SoundRing is an experimental Spotify Connect remote for a jailbroken Kindle Paperwhite 3. It displays playback on the e-ink screen and controls Spotify running on another device. **The Kindle does not stream or play audio.** This is an independent project, not affiliated with Spotify, Amazon, QQ Music or NetEase.
 
@@ -14,14 +14,14 @@ SoundRing is an experimental Spotify Connect remote for a jailbroken Kindle Pape
 
 ## Requirements
 
-1. Kindle Paperwhite 3 (1072 × 1448), jailbroken, with working Wi-Fi and a compatible KUAL or Kindle Scriptlet launcher already installed. Other models and firmware are not validated. Keep a separate recovery method and backup.
+1. Kindle Paperwhite 3 (1072 × 1448), jailbroken, with working Wi-Fi and a compatible KUAL or Kindle Scriptlet launcher already installed. The current launcher explicitly accepts firmware Kindle 5.16.2.1.1 only; other firmware is refused at startup. Other models are not validated. Keep a separate recovery method and backup.
 2. Spotify Premium, a Spotify developer app and a Spotify Connect device such as a phone. Spotify's [development-mode rules](https://developer.spotify.com/documentation/web-api/concepts/quota-modes) impose account, user and endpoint restrictions; functionality may vary. Playing controls require Premium. Start Spotify on the other device first.
 3. A Windows computer with Python 3 and Tkinter for the included configuration tool, USB connection and browser. The configuration tool does not require a client secret.
 4. Network access from the Kindle to Spotify and the chosen lyrics/artist services. Availability varies by location, DNS and network; access from mainland China is not guaranteed.
 
 ## Install
 
-1. Download `SoundRing-KPW3-v0.1.0.zip` from Releases and extract it on your computer. The archive has `soundring/`, `extensions/`, `documents/` and `configuration-tool/` directories.
+1. Download SoundRing KPW3 ZIP from Releases and extract it on your computer. The archive has `soundring/`, `extensions/`, `documents/` and `configuration-tool/` directories.
 2. Connect the Kindle over USB and **back up any existing** `soundring/`, `extensions/soundring/` and SoundRing shortcuts. Keep existing `soundring/soundring-config.json`, `soundring/soundring-token.json`, `soundring/lyric-choices.json`, `soundring/artists/` and `soundring/lyrics-cache/` private and preserve them during upgrades. Do not replace your entire Kindle storage.
 3. Merge the archive's `soundring/`, `extensions/`, and `documents/` into the Kindle USB root. Replace only corresponding SoundRing program files; do not delete existing personal data. The two documents shortcuts require a compatible Scriptlet launcher. KUAL users can also use the SoundRing menu; the recovery shortcut is a separate Scriptlet.
 4. Keep `configuration-tool/` on the computer. Do not run the program while USB storage is mounted.
@@ -40,6 +40,8 @@ SoundRing is an experimental Spotify Connect remote for a jailbroken Kindle Pape
 - **Lyrics:** tap the lyrics icon; the view changes automatically as the track progresses. Tap the lyrics-selection area to choose QQ Music or NetEase, change the keyword, and select the correct candidate. An empty result or incorrect match can occur; translation depends on provider data. To provide a local file, place a timed UTF-8 LRC file at `soundring/lyrics/<Spotify-track-ID>.lrc`.
 - **Artist and next track:** information loads in the background; use the paired arrows to switch between artists when present. The next-track label is informational. Missing images use the included fallback artwork.
 - **Search:** digits appear above QWERTY letters. Left/right arrows move the caret; space, delete and search are below. Input is English or pinyin.
+- **Cache maintenance:** the configuration tool can scan and, after your confirmation, remove validated automatic lyric cache files. Manual selections, corrupt files and unrecognized files are preserved. Automatic lyric and artist-portrait cache growth each has a 64 MiB budget; existing files are never automatically deleted and manual lyrics remain eligible for saving.
+- **Repair lyric selections:** in the configuration tool, select the option to recover damaged lyric choices, choose the Kindle root, and confirm. It keeps a backup of the damaged index and restores only validated manual choices present in local lyric caches. Other choices cannot be reconstructed.
 - **Recovery:** if the screen or stock interface fails to restore after exiting, disconnect USB and launch **SoundRing Recovery**, then wait for the Kindle interface to return. If it still fails, retain the logs and avoid repeatedly restarting. Recovery and long-running operation remain device-dependent; exercise caution.
 - `soundring/package/session-limit` contains `0` for no timed exit; `180` or `600` sets a 3- or 10-minute trial. This setting does not guarantee fault-free continuous operation. Use USB storage to edit it only when SoundRing is not running.
 
@@ -55,6 +57,6 @@ SoundRing is an experimental Spotify Connect remote for a jailbroken Kindle Pape
 
 `python tests/run_all.py` runs the portable tests with Python 3 and LuaJIT available. Some wire and launcher tests also need Bash and curl. On-device validation is separate.
 
-The public repository excludes the MiSans font binary; for a local source build place the original unmodified `MiSans-Regular.ttf` in `assets/fonts/` after obtaining it under its license, then run `python tools/build_stage.py`. The distributable application ZIP includes MiSans as part of the application and its license. Kumbh Sans, Source Han Sans and Noto Sans and bundled runtime components have their respective license notices in `assets/fonts/`, `licenses/` and `runtime/`. This software uses the FreeType Project. FBInk is GPLv3+; see `runtime/THIRD_PARTY.md` and `runtime/FBInk-LICENSE` for sources and notices. Lyrics-provider adapters were informed by Lyricify Lyrics Helper; availability and third-party usage terms apply.
+The public repository excludes the MiSans font binary; for a local source build place the original unmodified `MiSans-Regular.ttf` in `assets/fonts/` after obtaining it under its license, then run `python tools/build_stage.py`. The distributable application ZIP includes MiSans as part of the application and its license. Kumbh Sans, Source Han Sans, Noto Sans and the optional Noto Sans KR fallback, and bundled runtime components have their respective license notices in `assets/fonts/`, `licenses/` and `runtime/`. This software uses the FreeType Project. FBInk is GPLv3+; see `runtime/THIRD_PARTY.md` and `runtime/FBInk-LICENSE` for sources and notices. Lyrics-provider adapters were informed by Lyricify Lyrics Helper; availability and third-party usage terms apply.
 
 The project source is published without an additional open-source license grant at this time; third-party licenses remain applicable. Please do not assume that repository visibility alone grants redistribution rights.

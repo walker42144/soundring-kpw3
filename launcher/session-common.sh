@@ -1,7 +1,14 @@
 #!/bin/sh
 # Shared process identity and recovery. Never signal a reused PID.
 pid_stamp() { awk '{print $22}' "/proc/$1/stat" 2>/dev/null; }
+same_boot() {
+    [ -r "$RUN/boot.id" ] && [ -r /proc/sys/kernel/random/boot_id ] || return 0
+    read saved_boot < "$RUN/boot.id" || return 0
+    read current_boot < /proc/sys/kernel/random/boot_id || return 0
+    [ -z "$saved_boot" ] || [ -z "$current_boot" ] || [ "$saved_boot" = "$current_boot" ]
+}
 alive() {
+    same_boot || return 1
     [ -r "$1" ] || return 1
     read p stamp < "$1"
     case "$p:$stamp" in *[!0-9:]*|:|*:) return 1;; esac
@@ -43,6 +50,14 @@ recovery_notice() {
     log 'recovery notice requested'
 }
 recover() {
+    if ! same_boot; then
+        # No process identity or framebuffer snapshot survives a reboot.
+        # Keep old data for inspection; only release this exact owned lock.
+        : > "$RUN/recovery.previous-boot" || return 1
+        release_lock || return 1
+        log 'stale previous-boot session quarantined; snapshot not restored'
+        return 0
+    fi
     [ -f "$RUN/recovery.done" ] && return 0
     if ! mkdir "$RUN/recover.lock" 2>/dev/null; then
         sleep 1
@@ -104,13 +119,14 @@ recover() {
             rotate_log "$DATA/logs/power-events.log"
             awk '/goingToScreenSaver/ {print "goingToScreenSaver"} /outOfScreenSaver/ {print "outOfScreenSaver"} /readyToSuspend/ {print "readyToSuspend"} /wakeupFromSuspend/ {print "wakeupFromSuspend"}' "$RUN/power.events" >> "$DATA/logs/power-events.log" 2>/dev/null || true
         fi
-                # Preserve the snapshot and do not publish success if lock release fails.
-        if release_lock; then
-            if : > "$RUN/recovery.done"; then
+        # Publish completed restoration before releasing ownership, so a crash
+        # during lock release cannot orphan a completed snapshot indefinitely.
+        if : > "$RUN/recovery.done"; then
+            if release_lock; then
                 rm -f "$RUN/stock.fb" "$RUN/luajit" "$RUN/fbink" "$RUN/libfreetype.so.6" "$RUN/libz.so.1"
                 log 'restore_done (Home requested; visual confirmation still required)'
-            else ok=0;log 'restore_failed: completion marker failed; snapshot retained';fi
-        else ok=0;log 'restore_failed: lock release failed; snapshot retained';fi
+            else rm -f "$RUN/recovery.done";ok=0;log 'restore_failed: lock release failed; snapshot retained';fi
+        else ok=0;log 'restore_failed: completion marker failed; snapshot retained';fi
     fi
     rm -f "$RUN/recover.pid"; rmdir "$RUN/recover.lock" 2>/dev/null || true
     if [ "$ok" -eq 0 ] && [ "$tries" -ge 2 ]; then : > "$RUN/recovery.failed";fi

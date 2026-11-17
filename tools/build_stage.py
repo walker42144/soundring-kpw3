@@ -5,6 +5,9 @@ ROOT=Path(__file__).resolve().parents[1]
 WORK=ROOT.parent
 
 def build():
+    for name in ['MiSans-Regular.ttf','SourceHanSansCN-Medium.ttf','NotoSans-Regular.ttf','KumbhSans-500.ttf','KumbhSans-600.ttf']:
+        if not (ROOT/'assets'/'fonts'/name).is_file():
+            raise RuntimeError('Required font missing: '+name+'; see README before building')
     stage=Path(tempfile.mkdtemp(prefix='soundring-stage-',dir=WORK))
     package=stage/'soundring'/'package';app=package/'app';app.mkdir(parents=True)
     for part in ['soundring','core','platform','ui','services','assets']:
@@ -20,6 +23,15 @@ def build():
     for entry in (stage/'documents').glob('*.sh'):
         if os.name != 'nt': entry.chmod(0o755)
     shutil.copytree(ROOT/'extension',stage/'extensions'/'soundring')
+    # A staging directory is also a complete offline installation bundle.
+    config=stage/'configuration-tool';config.mkdir()
+    for name in ['config_gui.py','lyrics_provider.py','启动配置工具.cmd']:
+        shutil.copy2(ROOT/name,config/name)
+    for name in ['README.md','README.zh-CN.md','CHANGELOG.md','CHANGELOG.zh-CN.md']:
+        shutil.copy2(ROOT/name,stage/name)
+    source=stage/'tools'/'coverconv';source.mkdir(parents=True)
+    for name in ['coverconv.c','main.go','stb_image.h']:
+        shutil.copy2(ROOT/'tools'/'coverconv'/name,source/name)
     runtime=package/'runtime'/'coverconv';data=runtime.read_bytes()
     if data[:4]!=b'\x7fELF' or data[4]!=1 or struct.unpack_from('<H',data,18)[0]!=40: raise RuntimeError('converter is not ARM32 ELF')
     phoff=struct.unpack_from('<I',data,28)[0];size,count=struct.unpack_from('<HH',data,42)

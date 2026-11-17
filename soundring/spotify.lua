@@ -5,12 +5,18 @@ local function decoded(json,response)
  if not response or not response.body or response.body=='' then return nil end
  local ok,value=pcall(json.decode,response.body);if ok and type(value)=='table' then return value end
 end
+local function retry_delay(value)
+ local n=tonumber(value);if not n or n~=n or n==math.huge or n==-math.huge then return 60 end
+ return math.max(1,n)
+end
 function M.new(o)
  assert(o and o.http and o.json and o.client_id and o.token and o.save_token)
  return setmetatable({http=o.http,json=o.json,client_id=o.client_id,token=o.token,save_token=o.save_token,now=o.now or os.time},Client)
 end
 function Client:refresh(cb)
  if self.refresh_waiters then self.refresh_waiters[#self.refresh_waiters+1]=cb;return end
+ if self.needs_reauth then cb({ok=false,error='authorization_required'});return end
+ if self.refresh_retry_at and self.now()<self.refresh_retry_at then cb({ok=false,error=self.refresh_error or 'network_error'});return end
  if not self.token.refresh_token then cb({ok=false,error='authorization_required'});return end
  self.refresh_waiters={cb}
  local function finish(result)
@@ -20,14 +26,14 @@ function Client:refresh(cb)
  local body='grant_type=refresh_token&refresh_token='..enc(self.token.refresh_token)..'&client_id='..enc(self.client_id)
  self.http:request({url='https://accounts.spotify.com/api/token',method='POST',body=body,headers={['Content-Type']='application/x-www-form-urlencoded'},timeout=15,max_bytes=65536,priority=true,sensitive_values={self.token.refresh_token,self.client_id}},function(r)
   local d=decoded(self.json,r)
-  if r and r.status==429 then local delay=math.max(1,tonumber(r.retry_after) or 60);self.rate_limit_until=self.now()+delay;finish({ok=false,status=429,error='rate_limited',retry_after=delay});return end
-  if not r or not r.ok or not d or not d.access_token then local status=r and r.status or 0;local err=r and r.error=='request queue full' and 'queue_full' or status==0 and 'network_error' or (status==400 or status==401 or status==403) and 'token_refresh_failed' or 'request_failed';finish({ok=false,status=status,error=err});return end
+  if r and r.status==429 then local delay=retry_delay(r.retry_after);self.rate_limit_until=self.now()+delay;finish({ok=false,status=429,error='rate_limited',retry_after=delay});return end
+  if not r or not r.ok or not d or not d.access_token then local status=r and r.status or 0;local invalid=status==400 and d and d.error=='invalid_grant';local err=invalid and 'authorization_required' or r and r.error=='request queue full' and 'queue_full' or status==0 and 'network_error' or (status==400 or status==401 or status==403) and 'token_refresh_failed' or 'request_failed';if invalid then self.needs_reauth=true else self.refresh_failures=math.min((self.refresh_failures or 0)+1,6);self.refresh_retry_at=self.now()+math.min(300,5*2^(self.refresh_failures-1));self.refresh_error=err end;finish({ok=false,status=status,error=err});return end
   local next_token={};for k,v in pairs(self.token) do next_token[k]=v end
   next_token.access_token=d.access_token;next_token.refresh_token=d.refresh_token or next_token.refresh_token
   next_token.expires_at_ms=(self.now()+tonumber(d.expires_in or 3600)-60)*1000
   local ok=self.save_token(next_token)
   if not ok then finish({ok=false,error='token_save_failed'});return end
-  self.token=next_token;finish({ok=true})
+  self.token=next_token;self.refresh_failures=0;self.refresh_retry_at=nil;self.refresh_error=nil;finish({ok=true})
  end)
 end
 function Client:call(method,path,body,cb)
@@ -38,9 +44,9 @@ function Client:call(method,path,body,cb)
   if body then opts.headers['Content-Type']='application/json';opts.body=self.json.encode(body) elseif method=='POST' or method=='PUT' then opts.headers['Content-Length']='0' end
   self.http:request(opts,function(r)
    if r and r.status==401 and not retried and method=='GET' then self:refresh(function(res)if res.ok then send(true) else cb(res) end end);return end
-   if r and r.status==429 then local delay=math.max(1,tonumber(r.retry_after) or 60);self.rate_limit_until=self.now()+delay;cb({ok=false,status=429,error='rate_limited',retry_after=delay});return end
-   if r and r.ok then cb({ok=true,status=r.status,data=decoded(self.json,r)});return end
-   local status=r and r.status or 0;local err=r and r.error=='request queue full' and 'queue_full' or status==401 and 'token_expired' or status==403 and 'device_unavailable' or status==404 and 'device_unavailable' or status==0 and 'network_error' or 'request_failed';cb({ok=false,status=status,error=err})
+   if r and r.status==429 then local delay=retry_delay(r.retry_after);self.rate_limit_until=self.now()+delay;cb({ok=false,status=429,error='rate_limited',retry_after=delay});return end
+   if r and r.ok then local data=decoded(self.json,r);if method=='GET' and r.status~=204 and not data then cb({ok=false,status=r.status,error='invalid_response'});return end;cb({ok=true,status=r.status,data=data});return end
+   local status=r and r.status or 0;local player=path:match('^/v1/me/player')~=nil;local err=r and r.error=='request queue full' and 'queue_full' or status==401 and 'token_expired' or (status==403 or status==404) and player and 'device_unavailable' or status==403 and 'access_forbidden' or status==404 and 'not_found' or status==0 and 'network_error' or 'request_failed';cb({ok=false,status=status,error=err})
   end)
  end
  if not self.token.access_token or (self.token.expires_at_ms and self.now()*1000>=self.token.expires_at_ms) then

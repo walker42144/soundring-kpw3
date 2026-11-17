@@ -6,3 +6,5 @@ print('Artist store: bounded atomic records, verified aliases, corrupt fallback 
 
 assert(store:save_alias('chinese','Jay Chou','周杰倫'));assert(store:display_name('chinese','Jay Chou')=='周杰伦');assert(store:display_name('none','Original')=='Original')
 print('Artist display: verified Chinese aliases render simplified without changing original metadata')
+local sizes={['/artists/old.gray']=360000,['/artists/old.json']=500};local fs={read=function()end,list_dir=function()return {'old.gray','old.json'}end,file_size=function(_,p)return sizes[p]end};local capped=require('soundring.artist_store').new({storage=fs,json=json,dir='/artists',image_budget_bytes=400000});assert(not capped:can_cache_image('new',360000));assert(capped:can_cache_image('old',360000));assert(sizes['/artists/old.gray']==360000 and sizes['/artists/old.json']==500)
+print('Artist cache: portrait growth bounded without deleting images or aliases')

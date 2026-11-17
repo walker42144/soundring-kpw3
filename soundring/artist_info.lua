@@ -12,15 +12,21 @@ function Session:refresh()
  local input={};for _,a in ipairs(self.items) do input[#input+1]={id=a.id,name=a.name} end;local index=self.index or 1;self:set_track(input,true);self.index=math.min(index,math.max(1,#self.items));self:update()
 end
 function Session:select(step)if #self.items==0 then return end;self.index=(self.index-1+step)%#self.items+1;self:update()end
+function Session:poll()
+ local job=self.bio_pending;if not job then return end
+ if job.gen~=self.generation then self.bio_pending=nil;return end
+ local now=self.o.now and self.o.now() or os.time();if now<(self.musicbrainz_next or 0) then return end
+ self.bio_pending=nil;self.musicbrainz_next=now+1.1;job.send()
+end
 -- A NetEase portrait is used only when the artist ID was previously verified.
 function Session:domestic_image(gen,a,done)
  local id=a.netease_id;if type(id)~='string' or not id:match('^%d+$') or #id>20 then done();return end
  local o=self.o;o.http:request({url='https://music.163.com/api/artist/'..id,headers={Referer='https://music.163.com/'},timeout=8,max_bytes=524288,group='artist-bio-'..tostring(self)},function(r)
   if gen~=self.generation then return end;local ok,d=pcall(o.json.decode,r and r.body or '');local artist=ok and type(d)=='table' and d.artist;local url=artist and artist.img1v1Url
-  if not r or not r.ok or not artist or tostring(artist.id)~=id or type(url)~='string' or not url:match('^https://p[1-4]%.music%.126%.net/[%w_%%=%-]+/%d+%.jpg$') then done();return end
+  if not r or not r.ok or not artist or tostring(artist.id)~=id then done();return end;url=require('soundring.covers').netease_url(url);if not url then done();return end
   o.covers:fetch(url,function(path)
    if gen~=self.generation then return end
-   if path then local raw=o.storage:read(path,360001);local dst=o.store:image_path(a.id);if raw and #raw==360000 and o.storage:mkdir_p(o.store.dir) and o.storage:write_atomic(dst,raw) then a.image_path=dst;self:update() end end
+   if path then local raw=o.storage:read(path,360001);local dst=o.store:image_path(a.id);if raw and #raw==360000 then if (not o.store.can_cache_image or o.store:can_cache_image(a.id,#raw)) and o.storage:mkdir_p(o.store.dir) and o.storage:write_atomic(dst,raw) then a.image_path=dst else a.image_path=path end;self:update() end end
    done()
   end)
  end)
@@ -34,11 +40,11 @@ function Session:domestic_bio(gen,a,done)
  end)
 end
 function Session:bio(gen,a,done)
- if self.foreign_retry_after and os.time()<self.foreign_retry_after then done();return end
  local o=self.o;local function get(url,cb)
-  o.http:request({url=url,method='GET',timeout=12,max_bytes=524288,group='artist-bio-'..tostring(self)},function(r)
-   if gen~=self.generation then return end;local ok,v=pcall(o.json.decode,r and r.body or '');if not r or not r.ok or not ok or type(v)~='table' then self.foreign_retry_after=os.time()+1800;cb(nil) else cb(v) end
-  end)
+  local function send()o.http:request({url=url,method='GET',timeout=12,max_bytes=524288,group='artist-bio-'..tostring(self)},function(r)
+   if gen~=self.generation then return end;local ok,v=pcall(o.json.decode,r and r.body or '');if not r or not r.ok or not ok or type(v)~='table' then cb(nil) else cb(v) end
+  end)end
+  if o.now and url:find('https://musicbrainz.org/',1,true)==1 then self.bio_pending={gen=gen,send=send};self:poll() else send() end
  end
  local q='artist:"'..a.name:gsub('["\\]','')..'"'
  get('https://musicbrainz.org/ws/2/artist/?fmt=json&limit=5&query='..enc(q),function(data)
@@ -78,11 +84,11 @@ function Session:load_next(gen,n)
  o.spotify:artist(a.id,function(r)
   if gen~=self.generation then return end
   if not r or not r.ok or not r.data then self:domestic_image(gen,a,finish);return end
-  local data=r.data;local img=data.images and data.images[#data.images];local url=img and img.url
+  local data=r.data;local img;for _,candidate in ipairs(data.images or {})do if type(candidate.url)=='string' and candidate.url:match('^https://i%.scdn%.co/image/ab676161[%w]+$') and (not img or (tonumber(candidate.width) or tonumber(candidate.height) or 0)>(tonumber(img.width) or tonumber(img.height) or 0)) then img=candidate end end;local url=img and img.url
   if type(url)=='string' and url:match('^https://i%.scdn%.co/image/ab676161[%w]+$') then
    o.covers:fetch(url,function(path)
     if gen~=self.generation then return end
-    if path then local raw=o.storage:read(path,360001);local dst=o.store:image_path(a.id);if raw and #raw==360000 and o.storage:mkdir_p(o.store.dir) and o.storage:write_atomic(dst,raw) then a.image_path=dst end end
+    if path then local raw=o.storage:read(path,360001);local dst=o.store:image_path(a.id);if raw and #raw==360000 then if (not o.store.can_cache_image or o.store:can_cache_image(a.id,#raw)) and o.storage:mkdir_p(o.store.dir) and o.storage:write_atomic(dst,raw) then a.image_path=dst else a.image_path=path end end end
     self:update();if a.image_path then finish() else self:domestic_image(gen,a,finish) end
    end)
   else if a.image_path then finish() else self:domestic_image(gen,a,finish) end end

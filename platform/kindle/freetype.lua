@@ -37,6 +37,7 @@ function F.new(opts)
   for _,path in ipairs({self.cjk,self.latin,self.display,self.fallback,self.international}) do self:face(path) end
  end)
  if not ok then self:close();error(err) end
+ if opts.korean then local loaded=pcall(function()self:face(opts.korean)end);if loaded then self.korean=opts.korean end end
  return self
 end
 function F:face(path)
@@ -53,7 +54,8 @@ function F:glyph(cp,size,explicit)
   if self.lib.FT_Get_Char_Index(self:face(path),cp)==0 then path=self.international end
   if self.lib.FT_Get_Char_Index(self:face(path),cp)==0 then path=self.cjk end
   if self.lib.FT_Get_Char_Index(self:face(path),cp)==0 then path=self.fallback end
-  if self.lib.FT_Get_Char_Index(self:face(path),cp)==0 then return {w=0,h=0,left=0,top=0,advance=0,pixels=''} end
+  if self.lib.FT_Get_Char_Index(self:face(path),cp)==0 and self.korean then path=self.korean end
+  if self.lib.FT_Get_Char_Index(self:face(path),cp)==0 then if cp~=0xfffd and cp~=63 then return self:glyph(0xfffd,size) elseif cp==0xfffd then return self:glyph(63,size) end;return {w=0,h=0,left=0,top=0,advance=math.ceil(size*.6),pixels=''} end
  end
  local key=path..':'..size..':'..cp;if self.cache[key] then return self.cache[key] end
  local face=self:face(path);assert(self.lib.FT_Set_Pixel_Sizes(face,0,size)==0,'font size rejected')

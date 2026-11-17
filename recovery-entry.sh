@@ -17,8 +17,8 @@ owner=$(cat /var/tmp/soundring/session.lock/run 2>/dev/null)
 for RUN in /var/tmp/soundring/run.*; do
  [ -z "$owner" ] || [ "$RUN" = "$owner" ] || continue
  [ -f "$RUN/session-common.sh" ] || continue
- [ -f "$RUN/recovery.done" ] && continue
  . "$RUN/session-common.sh"
+ if [ -f "$RUN/recovery.done" ] && same_boot;then continue;fi
  if alive "$RUN/supervisor.pid" && [ ! -f "$RUN/stop.request" ]; then
   if [ ! -f "$RUN/app.pid" ];then log 'manual recovery skipped starting session';continue;fi
   if alive "$RUN/app.pid";then

@@ -1,0 +1,5 @@
+Noto Sans KR variable font
+Source: https://github.com/google/fonts/tree/main/ofl/notosanskr
+Original file: NotoSansKR[wght].ttf (unmodified)
+License: SIL Open Font License 1.1, see NotoSansKR-OFL.txt
+SHA-256: 194018e6b2b293a7964f037b25c0249ce1418bc9ab3c971060a03aa57861e252

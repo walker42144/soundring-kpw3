@@ -2,7 +2,7 @@
 local M={};local Store={};Store.__index=Store
 function M.new(o) assert(o and o.storage and o.json and o.path);return setmetatable(o,Store) end
 function Store:load_all()
- local raw=self.storage:read(self.path,262144);if not raw then return {} end
+ local raw,err=self.storage:read(self.path,262144);if not raw then if err=='file exceeds size limit' or (self.storage.exists and self.storage:exists(self.path)) then return nil,'invalid_choice_store' end;return {} end
  local ok,data=pcall(self.json.decode,raw);if ok and type(data)=='table' then return data end
  return nil,'invalid_choice_store'
 end

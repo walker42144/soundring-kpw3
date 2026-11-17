@@ -9,8 +9,7 @@ local function clip(d,text,width,size)
  text=tostring(text or '');if not d.measure then return text end
  if d:measure(text,size)<=width then return text end
  local chars={};for c in text:gmatch('[%z\1-\127\194-\244][\128-\191]*') do chars[#chars+1]=c end
- while #chars>0 do table.remove(chars);local s=table.concat(chars)..'…';if d:measure(s,size)<=width then return s end end
- return ''
+ local lo,hi,best=0,#chars,'';while lo<=hi do local mid=math.floor((lo+hi)/2);local s=table.concat(chars,'',1,mid)..'…';if d:measure(s,size)<=width then best=s;lo=mid+1 else hi=mid-1 end end;return best
 end
 local function text(d,x,y,w,size,value,align)
  d:text({x=x,y=y,w=w,size=size,text=clip(d,value,w,size),align=align or 'left',color='ink',bg='paper'})
@@ -48,10 +47,10 @@ function M.render(d,state,full)
  local w,h=d.width,d.height;local l=M.layout(w,h);local m=l.margin;local zones={}
  local function zone(name,x,y,ww,hh,value)zones[#zones+1]={name=name,x=x,y=y,w=ww,h=hh,value=value}end
  d:begin_frame(true)
- d:circle(m+14,34,13,'ink',false,2);d:circle(m+14,34,3,'ink',true);d:line(m+8,26,m+6,34,'ink',2);d:line(m+6,34,m+8,42,'ink',2);d:line(m+20,26,m+22,34,'ink',2);d:line(m+22,34,m+20,42,'ink',2);text(d,m+36,20,w*.26,25,'SoundRing');text(d,w*.33,20,w*.34,24,state.device or '无播放设备','center')
+ d:circle(m+14,34,13,'ink',false,2);d:circle(m+14,34,3,'ink',true);d:line(m+8,26,m+6,34,'ink',2);d:line(m+6,34,m+8,42,'ink',2);d:line(m+20,26,m+22,34,'ink',2);d:line(m+22,34,m+20,42,'ink',2);text(d,m+36,20,w*.26,25,'SoundRing');text(d,w*.33,20,w*.34,24,(state.device and state.device~='' and state.device or '无播放设备'),'center')
  text(d,w*.70,20,w*.26,18,(state.wifi_label or 'Wi-Fi --%')..'  退出', 'right');zone('exit',w*.89,0,w*.11,75)
  local s=state;local t=s.track or {}
- local errors={request_failed='网络或授权异常，请重试',network_error='网络连接失败，请检查 Wi-Fi',device_unavailable='播放设备不可用',token_refresh_failed='授权已失效，请在电脑重新授权',authorization_required='请先在电脑完成授权',token_expired='授权需要刷新，请稍后重试',token_save_failed='无法保存授权，请检查存储空间',queue_full='请求繁忙，请稍后重试',timeout='网络超时，请重试',cancelled='请求已取消',paused='网络请求已暂停',invalid_track='该条目暂不支持播放',rate_limited='Spotify 请求频繁，请稍后重试'}
+ local errors={invalid_response='Spotify 响应异常，请检查网络',access_forbidden='Spotify 未允许此操作',not_found='请求的内容不可用',request_failed='网络或授权异常，请重试',network_error='网络连接失败，请检查 Wi-Fi',device_unavailable='播放设备不可用',token_refresh_failed='授权已失效，请在电脑重新授权',authorization_required='请先在电脑完成授权',token_expired='授权需要刷新，请稍后重试',token_save_failed='无法保存授权，请检查存储空间',queue_full='请求繁忙，请稍后重试',timeout='网络超时，请重试',cancelled='请求已取消',paused='网络请求已暂停',invalid_track='该条目暂不支持播放',rate_limited='Spotify 请求频繁，请稍后重试'}
  if s.trial_notice then text(d,m,72,w-2*m,19,'测试版将在 '..s.trial_notice..' 分钟后自动退出','center') end
  if s.page=='lyrics_search' then
   text(d,m,100,w-2*m,35,'选择正确歌词')
@@ -90,13 +89,15 @@ function M.render(d,state,full)
    d:hline(m,190,w-2*m,1,'gray4');text(d,m,210,w-2*m,24,'歌词')
    local lines=s.lyric_lines or {};local gap=22;local column=(w-2*m-gap)/2;local size=27;local available=l.transport_y-280;local lh=38
    local message=errors[s.status];if message then text(d,m,230,w-2*m,20,message) end
-   local pages=Lyrics.pages(lines,available,function(v,line)return math.max(1,#wrap(d,v,column,size))*lh+(line.translation and #wrap(d,line.translation,column,21)*29 or 0) end)
+   local cache=s._lyric_pages;local pages
+   if cache and cache.lines==lines and cache.available==available and cache.column==column and cache.display==d then pages=cache.pages
+   else pages=Lyrics.pages(lines,available,function(v,line)return math.max(1,#wrap(d,v,column,size))*lh+(line.translation and #wrap(d,line.translation,column,21)*29 or 0) end);s._lyric_pages={lines=lines,available=available,column=column,display=d,pages=pages} end
    if pages then
     local chosen=Lyrics.page_at(pages,s.progress_ms or 0) or 1;local nextpage=pages[chosen+1];s.lyric_next_ms=nextpage and ((nextpage[1][1] or nextpage[2][1]).ms) or nil;local p=pages[chosen]
     if p then for col=1,2 do local y=message and 265 or 255;for _,line in ipairs(p[col]) do for _,v in ipairs(wrap(d,line.text,column,size)) do text(d,m+(col-1)*(column+gap),y,column,size,v);y=y+lh end;if line.translation then for _,v in ipairs(wrap(d,line.translation,column,21)) do text(d,m+(col-1)*(column+gap),y,column,21,v);y=y+29 end end end end end
    elseif #lines>0 then text(d,m,260,w-2*m,25,'歌词过长，无法完整显示') end
    if s.lyrics and s.lyrics.warning=='choice_not_saved' then text(d,m,235,w-2*m,20,'歌词已显示，但选择未能保存') end
-   if #lines==0 then text(d,m,260,w-2*m,25,'暂无同步歌词');text(d,m,300,w-2*m,23,'点击此处选择歌词，可尝试仅输入歌名');zone('lyrics_search',m,240,w-2*m,110,'qq') end
+   if #lines==0 then text(d,m,260,w-2*m,25,s.lyrics and s.lyrics.warning=='remembered_unavailable' and '已选歌词暂不可用，请重试或重新选择' or '暂无同步歌词');text(d,m,300,w-2*m,23,'点击此处选择歌词，可尝试仅输入歌名');zone('lyrics_search',m,240,w-2*m,110,'qq') end
    zone('lyrics_search',w-210,195,180,60,'qq');text(d,w-210,210,180,22,'选择歌词','right')
   else
    s.lyric_next_ms=nil
@@ -104,7 +105,7 @@ function M.render(d,state,full)
    local covered=s.cover_path and d.image_gray and d:image_gray(s.cover_path,ax,ay,art,art)
    if not covered then d:fill({x=ax,y=ay,w=art,h=art},'gray5');d:circle(w/2,ay+art/2,art*.30,'gray2',false,5);d:circle(w/2,ay+art/2,art*.08,'ink',true) end
    text(d,m,ay+art+45,w-2*m,40,t.name or '未播放');text(d,m,ay+art+100,w-2*m,28,(t.display_artist and t.display_artist~='' and t.display_artist or t.artist) or '')
-   local messages={play_not_confirmed='播放设备未确认切歌，请重试',loading='正在连接 Spotify…',no_playback='请先在其他设备播放 Spotify',request_failed='网络或授权异常，请检查后重试',network_error='网络连接失败，请检查 Wi-Fi',device_unavailable='播放设备不可用，请检查 Spotify',token_refresh_failed='授权已失效，请在电脑重新授权',authorization_required='请先在电脑完成授权',token_expired='授权需要刷新，请稍后重试',token_save_failed='无法保存授权，请检查存储空间',queue_full='请求繁忙，请稍后重试',timeout='网络超时，请重试',cancelled='请求已取消',paused='网络请求已暂停',invalid_track='该条目暂不支持播放',rate_limited='Spotify 请求过于频繁，请稍后重试'}
+   local messages={invalid_response='Spotify 响应异常，请检查网络',access_forbidden='Spotify 未允许此操作',not_found='请求的内容不可用',play_not_confirmed='播放设备未确认切歌，请重试',loading='正在连接 Spotify…',no_playback='请先在其他设备播放 Spotify',request_failed='网络或授权异常，请检查后重试',network_error='网络连接失败，请检查 Wi-Fi',device_unavailable='播放设备不可用，请检查 Spotify',token_refresh_failed='授权已失效，请在电脑重新授权',authorization_required='请先在电脑完成授权',token_expired='授权需要刷新，请稍后重试',token_save_failed='无法保存授权，请检查存储空间',queue_full='请求繁忙，请稍后重试',timeout='网络超时，请重试',cancelled='请求已取消',paused='网络请求已暂停',invalid_track='该条目暂不支持播放',rate_limited='Spotify 请求过于频繁，请稍后重试'}
    if messages[s.status] then text(d,m,ay+art+150,w-2*m,23,messages[s.status]) elseif s.status and s.status~='ready' then text(d,m,ay+art+150,w-2*m,23,'操作失败，请稍后重试') end
    local info=state.artists or {};local selected=info[state.artist_index or 1];local top=ay+art+158;local bottom=l.transport_y-25
    if selected and bottom>top+150 then
@@ -133,10 +134,10 @@ function M.render(d,state,full)
   local span=math.min(w-2*m,640);local x0=(w-span)/2
   for i=1,5 do local x=x0+(i-.5)*span/5;action_icon(d,names[i],x,l.action_y+27,selected[i]);zone(names[i],x-span/10,l.action_y-10,span/5,74) end
  else
-  local title=({devices='播放设备',playlists='歌单',playlist_items='歌曲',search='搜索'})[s.page] or '列表';text(d,m+(s.page=='playlist_items' and 110 or 0),100,w-2*m,36,title);if s.page=='playlist_items' then text(d,m,104,100,26,'‹ 返回');zone('playlist_back',m,88,105,75) end;if s.page=='playlist_items' then local shown=math.min(10,math.max(0,#(s.items or {})-(s.list_offset or 0)));local count=s.list_total and tostring(s.list_total) or '—';text(d,w*.52,112,w*.43,21,'共 '..count..' 首 · 本页 '..shown..' 首','right') end
+  local title=({devices='播放设备',playlists='歌单',playlist_items='歌曲',search='搜索'})[s.page] or '列表';text(d,m+(s.page=='playlist_items' and 110 or 0),100,w-2*m,36,title);if s.page=='playlist_items' then text(d,m,104,100,26,'‹ 返回');zone('playlist_back',m,88,105,75) end;if s.page=='playlist_items' then local shown=math.min(10,math.max(0,#(s.items or {})-(s.list_offset or 0)));local count=s.list_total and tostring(s.list_total) or '—';text(d,w*.52,112,w*.43,21,'共 '..count..' 首 · 本页 '..shown..' 项','right') end
   if s.page=='devices' and type(s.volume)=='number' then text(d,m,150,w-2*m,24,'音量 −       '..s.volume..'%       +','center');zone('volume',w*.20,135,w*.23,65,-5);zone('volume',w*.57,135,w*.23,65,5)
   elseif s.status=='loading' then text(d,m,150,w-2*m,24,'正在加载…') elseif s.status=='invalid_track' then text(d,m,150,w-2*m,24,'该条目暂不支持播放') elseif s.status=='queue_full' then text(d,m,150,w-2*m,24,'请求繁忙，请稍后重试') elseif s.status=='playlist_forbidden' then text(d,m,150,w-2*m,24,'Spotify 限制查看此歌单，请在 Spotify 打开') elseif s.status~='ready' then text(d,m,150,w-2*m,24,'加载失败，请检查网络和授权') elseif #(s.items or {})==0 then text(d,m,150,w-2*m,24,'没有可显示的项目') end
-  for i=1,math.min(s.page=='devices' and 8 or 10,math.max(0,#(s.items or {})-(s.list_offset or 0))) do local item=s.items[(s.list_offset or 0)+i];local itemtrack=type(item)=='table' and (item.item or item.track or item) or {};if type(itemtrack)~='table' then itemtrack={} end;local y=(s.page=='devices' and 230 or 190)+(i-1)*110;local count=s.page=='playlists' and type(item)=='table' and ((type(item.items)=='table' and item.items.total) or (type(item.tracks)=='table' and item.tracks.total)) or nil;text(d,m,y,w-2*m-(s.page=='playlists' and 150 or 0),30,itemtrack.name or '');if s.page=='playlists' then text(d,w-m-150,y+4,150,21,(count and tostring(count) or '—')..' 首','right') end;d:hline(m,y+85,w-2*m,1,'gray4');local action=s.page=='devices' and 'transfer' or s.page=='playlists' and 'playlist_items' or 'play_uri';local value=action=='play_uri' and itemtrack.uri or (type(item)=='table' and item.id);if action=='play_uri' and type(value)=='string' then local context=s.page=='playlist_items' and type(s.playlist_id)=='string' and ('spotify:playlist:'..s.playlist_id) or (type(itemtrack.album)=='table' and itemtrack.album.uri);value={uri=value,context=context} end;if value then zone(action,m,y-8,w-2*m,100,value) end end
+  for i=1,math.min(s.page=='devices' and 8 or 10,math.max(0,#(s.items or {})-(s.list_offset or 0))) do local item=s.items[(s.list_offset or 0)+i];local itemtrack=type(item)=='table' and (item.item or item.track or item) or {};if type(itemtrack)~='table' then itemtrack={} end;local y=(s.page=='devices' and 230 or 190)+(i-1)*110;local count=s.page=='playlists' and type(item)=='table' and ((type(item.items)=='table' and item.items.total) or (type(item.tracks)=='table' and item.tracks.total)) or nil;text(d,m,y,w-2*m-(s.page=='playlists' and 150 or 0),30,itemtrack.name or '不可播放的条目');if s.page=='playlists' then text(d,w-m-150,y+4,150,21,(count and tostring(count) or '—')..' 首','right') end;d:hline(m,y+85,w-2*m,1,'gray4');local action=s.page=='devices' and 'transfer' or s.page=='playlists' and 'playlist_items' or 'play_uri';local value=action=='play_uri' and itemtrack.uri or (type(item)=='table' and item.id);if action=='play_uri' and type(value)=='string' then local context=s.page=='playlist_items' and type(s.playlist_id)=='string' and ('spotify:playlist:'..s.playlist_id) or (type(itemtrack.album)=='table' and itemtrack.album.uri);value={uri=value,context=context} end;if value then zone(action,m,y-8,w-2*m,100,value) end end
   if s.page~='devices' or #(s.items or {})>8 then text(d,m,l.bottom_y-65,w*.3,23,'上一页');text(d,w*.7,l.bottom_y-65,w*.25,23,'下一页','right');zone('list_prev',m,l.bottom_y-80,w*.3,65);zone('list_next',w*.65,l.bottom_y-80,w*.3,65) end
  end
  if s.page~='lyrics_search' then

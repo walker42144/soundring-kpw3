@@ -1,5 +1,5 @@
 """SoundRing KPW3 configuration prototype. No automatic Kindle installation."""
-import base64, hashlib, ipaddress, json, os, secrets, shutil, tempfile, threading, time, webbrowser
+import base64, hashlib, ipaddress, json, os, re, secrets, shutil, tempfile, threading, time, webbrowser
 try:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
@@ -86,9 +86,90 @@ def export_device_config(root, config, token):
         raise
     return paths,backup
 
+def recover_lyric_choices(root):
+    """Recover validated manual selections from local cache; preserve the original."""
+    root=os.path.abspath(root);target=os.path.join(root,'soundring')
+    if not os.path.isdir(os.path.join(root,'documents')) or os.path.islink(target): raise ValueError('请选择 Kindle 存储根目录。')
+    path=os.path.join(target,'lyric-choices.json');cache=os.path.join(target,'lyrics-cache')
+    if os.path.islink(path) or os.path.islink(cache): raise ValueError('数据路径不能是符号链接。')
+    if os.path.exists(path):
+        if not os.path.isfile(path): raise ValueError('歌词选择路径不是普通文件。')
+        try:
+            with open(path,'r',encoding='utf8') as f: old=json.load(f)
+            if isinstance(old,dict): raise ValueError('现有歌词选择文件有效，无需恢复。')
+        except (json.JSONDecodeError,UnicodeDecodeError): pass
+    if not os.path.isdir(cache): raise ValueError('没有找到歌词缓存目录。')
+    recovered={}
+    for item in os.scandir(cache):
+        if not item.is_file(follow_symlinks=False) or not re.fullmatch(r'[A-Za-z0-9]{1,64}\.json',item.name): continue
+        try:
+            if item.stat(follow_symlinks=False).st_size>1100000: continue
+            with open(item.path,'r',encoding='utf8') as f: data=json.load(f)
+            ident=item.name[:-5];c=data.get('choice') if isinstance(data,dict) and data.get('version')==1 and data.get('track_id')==ident else None
+            if not isinstance(c,dict) or c.get('source') not in ('qq','netease') or not isinstance(c.get('id'),str) or not re.fullmatch(r'[A-Za-z0-9]{1,32}',c['id']): continue
+            if c['source']=='netease' and not re.fullmatch(r'[0-9]+',c['id']): continue
+            if data.get('source')!=c['source'] or not isinstance(data.get('lrc'),str) or not re.search(r'\[\d+:\d+[\d.]*\]',data['lrc']): continue
+            recovered[ident]={'source':c['source'],'id':c['id']}
+        except (OSError,UnicodeDecodeError,ValueError,TypeError): continue
+    if not recovered: raise ValueError('没有可验证的手动歌词缓存，未修改原文件。')
+    if len(json.dumps(recovered,ensure_ascii=False).encode('utf8'))>262144: raise ValueError('恢复结果超过容量限制，未修改原文件。')
+    backup=None
+    if os.path.exists(path):
+        backup=path+'.damaged-'+secrets.token_hex(8)+'.bak'
+        with open(path,'rb') as source,open(backup,'xb') as dest: shutil.copyfileobj(source,dest)
+    write_json(path,recovered)
+    return len(recovered),backup
+
+def scan_automatic_lyrics(root):
+    """List only validated, automatically fetched entries, without modifying them."""
+    root=os.path.abspath(root);base=os.path.join(root,'soundring');cache=os.path.join(base,'lyrics-cache');index=os.path.join(base,'lyric-choices.json')
+    if not os.path.isdir(os.path.join(root,'documents')) or os.path.islink(base) or os.path.islink(cache) or os.path.islink(index): raise ValueError('请选择有效的 Kindle 存储根目录。')
+    if not os.path.isdir(cache): return {'index':index,'index_hash':None,'files':[],'bytes':0}
+    selected={};index_hash=None
+    if os.path.exists(index):
+        if not os.path.isfile(index) or os.path.getsize(index)>262144: raise ValueError('手动歌词选择索引不可读取，已停止清理。')
+        with open(index,'rb') as f: raw=f.read(262145)
+        try: selected=json.loads(raw.decode('utf8'))
+        except (ValueError,UnicodeDecodeError): raise ValueError('手动歌词选择索引损坏，已停止清理。')
+        if not isinstance(selected,dict): raise ValueError('手动歌词选择索引损坏，已停止清理。')
+        index_hash=hashlib.sha256(raw).hexdigest()
+    files=[];size=0
+    for item in os.scandir(cache):
+        if not item.is_file(follow_symlinks=False) or not re.fullmatch(r'[A-Za-z0-9]{1,64}\.json',item.name): continue
+        ident=item.name[:-5]
+        if ident in selected:continue
+        try:
+            stat=item.stat(follow_symlinks=False)
+            if stat.st_size>1100000:continue
+            with open(item.path,'r',encoding='utf8') as f: data=json.load(f)
+            if not isinstance(data,dict) or data.get('version')!=1 or data.get('track_id')!=ident or data.get('choice') is not None:continue
+            if data.get('source') not in ('qq','netease') or not isinstance(data.get('lrc'),str) or not re.search(r'\[\d+:\d+[\d.]*\]',data['lrc']):continue
+            files.append((item.path,stat.st_size,stat.st_mtime_ns));size+=stat.st_size
+        except (OSError,UnicodeDecodeError,ValueError,TypeError):continue
+    return {'index':index,'index_hash':index_hash,'files':files,'bytes':size}
+
+def remove_automatic_lyrics(plan):
+    """Remove reviewed entries only if the manual-choice index and files are unchanged."""
+    index=plan['index']
+    if os.path.islink(index):raise ValueError('歌词选择索引已变化，请重新扫描。')
+    if os.path.isfile(index):
+        with open(index,'rb') as f: current=hashlib.sha256(f.read(262145)).hexdigest()
+    elif os.path.exists(index):raise ValueError('歌词选择索引已变化，请重新扫描。')
+    else:current=None
+    if current!=plan['index_hash']:raise ValueError('歌词选择索引已变化，请重新扫描。')
+    removed=0
+    for path,size,mtime in plan['files']:
+        try:
+            if os.path.islink(path):continue
+            stat=os.stat(path,follow_symlinks=False)
+            if stat.st_size!=size or stat.st_mtime_ns!=mtime:continue
+            os.unlink(path);removed+=1
+        except FileNotFoundError:continue
+    return removed
+
 class App:
     def __init__(self, root):
-        self.root=root;root.title('SoundRing KPW3 配置工具');root.geometry('680x580');root.minsize(560,520)
+        self.root=root;root.title('SoundRing KPW3 配置工具');root.geometry('680x640');root.minsize(560,620)
         self.client=tk.StringVar();self.redirect=tk.StringVar(value=REDIRECT);self.source=tk.StringVar(value='qq_netease_local');self.interval=tk.IntVar(value=5);self.token=None
         frame=ttk.Frame(root,padding=24);frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='SoundRing KPW3',font=('Microsoft YaHei UI',18,'bold')).pack(anchor='w')
@@ -103,6 +184,24 @@ class App:
         line=ttk.Frame(opts);line.pack(fill='x',pady=(10,0));ttk.Label(line,text='播放状态查询间隔（秒）').pack(side='left');ttk.Spinbox(line,from_=5,to=120,textvariable=self.interval,width=5).pack(side='left',padx=10)
         ttk.Label(frame,text='导出的授权文件包含可访问账号的令牌，请只保存在你信任的位置。',wraplength=610).pack(anchor='w',pady=(0,12))
         buttons=ttk.Frame(frame);buttons.pack(fill='x');ttk.Button(buttons,text='导出配置',command=self.export_config).pack(side='left');ttk.Button(buttons,text='导出授权文件',command=self.export_token).pack(side='left',padx=10);ttk.Button(buttons,text='写入 Kindle 配置',command=self.export_to_device).pack(side='left')
+        maintenance=ttk.Frame(frame);maintenance.pack(fill='x',pady=(10,0));ttk.Button(maintenance,text='从缓存恢复损坏的歌词选择',command=self.recover_choices).pack(side='left');ttk.Button(maintenance,text='清理自动歌词缓存',command=self.clean_lyrics).pack(side='left',padx=10)
+    def clean_lyrics(self):
+        root=filedialog.askdirectory(title='选择 Kindle USB 存储根目录')
+        if not root:return
+        try: plan=scan_automatic_lyrics(root)
+        except (OSError,ValueError) as e:messagebox.showerror('无法扫描',str(e),parent=self.root);return
+        if not plan['files']:messagebox.showinfo('没有可清理的缓存','未发现可安全清理的自动歌词缓存。',parent=self.root);return
+        if not messagebox.askyesno('确认清理',f"将删除 {len(plan['files'])} 个自动歌词缓存，约 {plan['bytes']/1048576:.1f} MiB。手动选择、损坏或不可验证的文件会保留。继续吗？",parent=self.root):return
+        try: count=remove_automatic_lyrics(plan)
+        except (OSError,ValueError) as e:messagebox.showerror('清理中止',str(e),parent=self.root);return
+        messagebox.showinfo('清理完成',f'已清理 {count} 个未改变的自动缓存。',parent=self.root)
+    def recover_choices(self):
+        root=filedialog.askdirectory(title='选择 Kindle USB 存储根目录')
+        if not root:return
+        if not messagebox.askyesno('恢复歌词选择','仅从可验证的歌词缓存恢复手动选择；原损坏文件会保存在 Kindle。无法从缓存恢复的选择仍需要重新选择。继续吗？',parent=self.root):return
+        try: count,backup=recover_lyric_choices(root)
+        except (OSError,ValueError) as e:messagebox.showerror('无法恢复',str(e),parent=self.root);return
+        messagebox.showinfo('恢复完成',f'恢复了 {count} 条歌词选择。'+('\n原文件备份：'+backup if backup else ''),parent=self.root)
     def start_auth(self):
         client=self.client.get().strip();redirect_uri=self.redirect.get().strip();self.auth.config(state='disabled');self.status.config(text='等待浏览器授权…')
         def worker():

@@ -1,6 +1,14 @@
 -- Async conversion: work remains inside the supervisor's private run directory.
 local util=require('core.util')
 local M={}
+function M.netease_url(url)
+ if type(url)~='string' then return nil end
+ local base=url:match('^([^?#]+)');if not base then return nil end
+ base=base:gsub('^http://','https://')
+ local stem,ext=base:match('^(https://p[1-4]%.music%.126%.net/[%w_%%=%-]+/%d+)%.([%a]+)$')
+ if not stem or (ext~='jpg' and ext~='jpeg' and ext~='png') then return nil end
+ return stem..'.'..ext
+end
 function M.new(o)
  assert(o and o.http and o.storage and o.runner and o.dir and o.converter)
  local self={generation=0,pending={}}
@@ -12,10 +20,12 @@ function M.new(o)
   self.generation=self.generation+1;local gen=self.generation
   if o.http.cancel_group then o.http:cancel_group('cover-'..tostring(self)) end
   for _,job in ipairs(self.pending)do if not job.cancelled then cancel(job);job.cancelled=true end end
-  local spotify_ok=type(url)=='string' and url:match('^https://i%.scdn%.co/image/[%w]+$');local netease_ok=type(url)=='string' and url:match('^https://p[1-4]%.music%.126%.net/[%w_%%=%-]+/%d+%.jpg$')
+  local spotify_ok=type(url)=='string' and url:match('^https://i%.scdn%.co/image/[%w]+$');local netease_ok=M.netease_url(url);if netease_ok then url=netease_ok end
   if not spotify_ok and not netease_ok then callback(nil,'unsupported_cover_url');return end
+  local function request(attempt)
   o.http:request({url=url,method='GET',timeout=15,max_bytes=2097152,group='cover-'..tostring(self)},function(r)
    if gen~=self.generation then return end
+   if r and r.error=='request queue full' and attempt==0 then self.retry={generation=gen,at=(o.now or os.time)()+2,run=function()request(1)end};return end
    if not r or not r.ok or not r.body or #r.body==0 then callback(nil,'cover_download_failed');return end
    local prefix=o.dir..'/'..(o.prefix or 'cover')..'-'..gen;local job={generation=gen,input=prefix..'.img',output=prefix..'.gray',script=prefix..'.sh',worker=prefix..'.worker.pid',cancel=prefix..'.cancel',done=prefix..'.done',rc=prefix..'.rc',callback=callback,started=(o.now or os.time)()}
    if not o.storage:write(job.input,r.body) then callback(nil,'cover_write_failed');return end
@@ -27,9 +37,12 @@ function M.new(o)
    local launched=o.runner:spawn_script(job.script,job.worker)
    if launched~=nil and launched~=0 and launched~=true then job.failed=true end
   end)
+  end
+  request(0)
  end
  function self:poll()
   local keep={};local now=(o.now or os.time)()
+  if self.retry and now>=self.retry.at then local retry=self.retry;self.retry=nil;if retry.generation==self.generation then retry.run() end end
   for _,job in ipairs(self.pending)do
    if job.failed or o.storage:exists(job.done) or now-job.started>30 then
     local ok=not job.failed and o.storage:exists(job.done) and tonumber(o.storage:read(job.rc,32) or '')==0
@@ -44,6 +57,7 @@ function M.new(o)
  end
  function self:clear()
   self.generation=self.generation+1
+  self.retry=nil
   for _,job in ipairs(self.pending)do if not job.cancelled then cancel(job);job.cancelled=true end end
   if o.http.cancel_group then o.http:cancel_group('cover-'..tostring(self)) end
   if self.current then o.storage:remove(self.current);self.current=nil end

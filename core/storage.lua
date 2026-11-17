@@ -26,6 +26,10 @@ function storage:exists(path)
     if not f then return false end
     f:close();return true
 end
+function storage:file_size(path)
+    local f=io.open(self:path(path),'rb');if not f then return nil end
+    local size=f:seek('end');f:close();return size
+end
 
 function storage:write(path, data)
     return util.write_file(self:path(path), data)

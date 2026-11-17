@@ -1,6 +1,6 @@
 # SoundRing for Kindle Paperwhite 3
 
-[English](README.md) · [下载 Releases](../../releases)
+[English](README.md) · [更新记录](CHANGELOG.zh-CN.md) · [下载 Releases](../../releases)
 
 SoundRing 是为已越狱 Kindle Paperwhite 3 制作的实验性 Spotify Connect 遥控器：墨水屏显示播放信息，音乐由手机、音箱或其他 Spotify 设备播放，**Kindle 本身不播放音频**。本项目与 Spotify、Amazon、QQ 音乐和网易云音乐均无隶属关系。
 
@@ -14,14 +14,14 @@ SoundRing 是为已越狱 Kindle Paperwhite 3 制作的实验性 Spotify Connect
 
 ## 准备工作
 
-1. Kindle Paperwhite 3（1072 × 1448），已越狱、Wi-Fi 可用，并已安装兼容的 KUAL 或 Kindle Scriptlet 启动器。其他型号和固件尚未验证。请保留独立恢复方式并备份。
+1. Kindle Paperwhite 3（1072 × 1448），已越狱、Wi-Fi 可用，并已安装兼容的 KUAL 或 Kindle Scriptlet 启动器。当前启动器明确只接受 Kindle 5.16.2.1.1 固件，其他固件会在启动前拒绝；其他型号尚未验证。请保留独立恢复方式并备份。
 2. Spotify Premium、自己的 Spotify 开发者应用，以及手机或音箱等 Spotify Connect 播放设备。[Spotify 开发模式规则](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)对账号、用户数和接口有额外限制；播放控制需要 Premium。先在播放设备启动 Spotify。
 3. 配置工具需要 Windows、Python 3（含 Tkinter）、浏览器和 USB。无需输入 Client Secret。
 4. Kindle 能访问 Spotify 和所选歌词／艺人资料服务。中国大陆的网络、DNS 和服务可用性各不相同，不能保证所有服务可连接。
 
 ## 安装
 
-1. 从 Releases 下载并解压 `SoundRing-KPW3-v0.1.0.zip`。压缩包含 `soundring/`、`extensions/`、`documents/` 和 `configuration-tool/`。
+1. 从 Releases 下载并解压 SoundRing KPW3 ZIP。压缩包含 `soundring/`、`extensions/`、`documents/` 和 `configuration-tool/`。
 2. 通过 USB 连接 Kindle。先备份已有 `soundring/`、`extensions/soundring/` 和 SoundRing 快捷方式。升级时特别保留 `soundring/soundring-config.json`、`soundring/soundring-token.json`、`soundring/lyric-choices.json`、`soundring/artists/` 和 `soundring/lyrics-cache/`；这些可能包含个人信息。不要覆盖或删除整个 Kindle 存储。
 3. 将压缩包中 `soundring/`、`extensions/`、`documents/` 合并复制到 Kindle USB 根目录，只替换对应的 SoundRing 程序文件，保留个人数据。documents 中的两个快捷方式需要兼容 Scriptlet 的启动器；KUAL 也提供 SoundRing 菜单。恢复快捷方式是独立 Scriptlet。
 4. `configuration-tool/` 保存在电脑上。Kindle 处于 USB 存储模式时不要运行应用。
@@ -40,6 +40,8 @@ SoundRing 是为已越狱 Kindle Paperwhite 3 制作的实验性 Spotify Connect
 - **歌词**：点击歌词图标进入歌词视图，按播放时间自动切换。点击歌词选择区域可切换 QQ 音乐或网易云、更改关键词并手动选择结果。翻译依赖服务提供；匹配不到时可尝试其他关键词。也可将 UTF-8 带时间标记的 LRC 放在 `soundring/lyrics/<Spotify歌曲ID>.lrc`。
 - **艺人与下一首**：资料在后台依次加载；多位艺人可用并排箭头切换。下一首名称仅供显示。无图片时显示默认头像。
 - **搜索**：最上方数字，其下是 QWERTY 字母，左右箭头移动光标，底部为空格、删除和搜索。目前输入英文或拼音。
+- **缓存维护**：配置工具可扫描自动歌词缓存，并在你确认后清理可验证的条目；手动选择、损坏或无法验证的文件会保留。自动歌词和艺人头像缓存各有 64 MiB 增长预算，不会自动删除已有文件，手动歌词仍可保存。
+- **恢复歌词选择**：在配置工具中选择从缓存恢复损坏的歌词选择，选择 Kindle 根目录并确认。工具会备份损坏的索引，只恢复本地缓存中可验证的手动选择；其他选择需要重新选择。
 - **恢复**：退出后若屏幕或系统界面未恢复，请拔掉 USB，打开 **SoundRing Recovery**，等待系统界面恢复。如果仍失败，保留日志，不要反复重启。恢复机制和长时间运行仍取决于设备环境。
 - `soundring/package/session-limit` 为 `0` 时不按时间自动退出；填 `180` 或 `600` 分别为 3 或 10 分钟测试模式。无限运行并不保证不会发生故障，仅在应用未运行时通过 USB 修改。
 
@@ -55,6 +57,6 @@ SoundRing 是为已越狱 Kindle Paperwhite 3 制作的实验性 Spotify Connect
 
 安装 Python 3 与 LuaJIT 后运行 `python tests/run_all.py`；部分网络和启动脚本测试还需要 Bash 与 curl。电脑端测试不能替代实机测试。
 
-公开源码仓库不单独分发 MiSans 字体文件；从官方获取并遵守其许可后，将原始未修改的 `MiSans-Regular.ttf` 放入 `assets/fonts/`，再运行 `python tools/build_stage.py` 构建。发行版应用包内包含 MiSans 及其许可文件。Kumbh Sans、思源黑体、Noto Sans 及运行时组件的许可见 `assets/fonts/`、`licenses/`、`runtime/`。本软件使用 FreeType；FBInk 为 GPLv3+，相关源码及许可见 `runtime/THIRD_PARTY.md` 和 `runtime/FBInk-LICENSE`。歌词接入参考 Lyricify Lyrics Helper，使用时须遵守第三方服务条款。
+公开源码仓库不单独分发 MiSans 字体文件；从官方获取并遵守其许可后，将原始未修改的 `MiSans-Regular.ttf` 放入 `assets/fonts/`，再运行 `python tools/build_stage.py` 构建。发行版应用包内包含 MiSans 及其许可文件。Kumbh Sans、思源黑体、Noto Sans、可选韩文回退字体 Noto Sans KR 及运行时组件的许可见 `assets/fonts/`、`licenses/`、`runtime/`。本软件使用 FreeType；FBInk 为 GPLv3+，相关源码及许可见 `runtime/THIRD_PARTY.md` 和 `runtime/FBInk-LICENSE`。歌词接入参考 Lyricify Lyrics Helper，使用时须遵守第三方服务条款。
 
 项目源码目前未额外指定开源许可证；第三方许可证仍适用。仓库公开不自动代表授权再分发。

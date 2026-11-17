@@ -24,6 +24,7 @@ while ! mkdir "$BASE/session.lock" 2>/dev/null; do
         (
             RUN=$previous
             . "$PKG/launcher/session-common.sh"
+            if ! same_boot; then recover;exit $?;fi
             if alive "$RUN/recover.pid"; then exit 10; fi
             [ ! -f "$RUN/recovery.failed" ] || exit 12
             if alive "$RUN/supervisor.pid"; then
@@ -74,6 +75,7 @@ while ! mkdir "$BASE/session.lock" 2>/dev/null; do
 done
 RUN=$(mktemp -d "$BASE/run.XXXXXX") || { rmdir "$BASE/session.lock"; exit 2; }
 echo "$RUN" > "$BASE/session.lock/run"
+if [ -r /proc/sys/kernel/random/boot_id ];then cat /proc/sys/kernel/random/boot_id > "$RUN/boot.id" 2>/dev/null || rm -f "$RUN/boot.id";fi
 cp "$PKG/launcher/session-common.sh" "$RUN/session-common.sh" || exit 2
 cp "$PKG/launcher/session-guard.sh" "$RUN/session-guard.sh" || exit 2
 cp "$PKG/launcher/watchdog.sh" "$RUN/watchdog.sh" || exit 2
@@ -93,7 +95,7 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'RC=143; exit 143' INT HUP TERM
-log "session_begin version=0.1.1-candidate1 revision=soundring-development lock_wait_ticks=$attempt run=$RUN"
+log "session_begin version=0.1.1 revision=release lock_wait_ticks=$attempt run=$RUN"
 # Temporary timing evidence: monotonic clock and shell builtins only.
 trace_startup() {
  read trace_uptime trace_idle < /proc/uptime || trace_uptime=unknown

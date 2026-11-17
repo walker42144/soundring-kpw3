@@ -61,7 +61,7 @@ function Session:set_track(track)
  if choice then
   online.get(self:request_options(generation),choice,function(result)
    if generation~=self.generation then return end
-   if result.ok then self:cache(track.id,result,choice);self:update({status='synced',source=result.source,lrc=result.lrc,translation=result.translation,candidates={},remembered=true});self:supplement(result,track,generation) else auto() end
+   if result.ok then self:cache(track.id,result,choice);self:update({status='synced',source=result.source,lrc=result.lrc,translation=result.translation,candidates={},remembered=true});self:supplement(result,track,generation) else self:update({status='not_found',warning='remembered_unavailable',source=choice.source,candidates={}}) end
   end)
  else auto() end
 end

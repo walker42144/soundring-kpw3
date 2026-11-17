@@ -21,6 +21,19 @@ function Cache:save(id,result,choice)
  local data={version=1,track_id=id,source=result.source,lrc=result.lrc,translation=result.translation,choice=choice,translation_checked_at=result.translation_checked_at}
  local ok,encoded=pcall(self.json.encode,data);if not ok or #encoded>1100000 then return false end
  if not self.storage:mkdir_p(self.dir) then return false end
+ if not choice then
+  local previous,readerr=self.storage:read(p,1100000)
+  if not previous and (readerr=='file exceeds size limit' or (self.storage.exists and self.storage:exists(p))) then return false,'existing_cache_unreadable' end
+  if previous then local valid,old=pcall(self.json.decode,previous);if not valid or type(old)~='table' then return false,'existing_cache_invalid' end;if type(old.choice)=='table' then return false,'manual_cache_preserved' end end
+ end
+ -- Bound growth of automatically fetched cache without deleting existing
+ -- entries or preventing explicitly chosen lyrics from being retained.
+ if not choice and self.storage.list_dir and self.storage.file_size then
+  local total=0;for _,name in ipairs(self.storage:list_dir(self.dir)) do
+   if name:match('^[%w]+%.json$') then local size=self.storage:file_size(self.dir..'/'..name);if not size then return false,'cache_size_unavailable' end;total=total+size end
+  end
+  local old=self.storage:file_size(p) or 0;if total-old+#encoded>(self.auto_budget_bytes or 64*1024*1024) then return false,'cache_full' end
+ end
  return self.storage:write_atomic(p,encoded)
 end
 return M
