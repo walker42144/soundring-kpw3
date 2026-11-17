@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+private-data/
+soundring-config.json
+soundring-token.json
+lyric-choices.json
+lyrics-cache/
+artists/
+logs/
+assets/fonts/MiSans-Regular.ttf

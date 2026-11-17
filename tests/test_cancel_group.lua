@@ -1,0 +1,8 @@
+local root=arg[0]:match('^(.*)[/\\]tests[/\\][^/\\]+$') or '.';package.path=root..'/?.lua;'..package.path
+local files={};local stopped={};local s={write=function(_,p,v)files[p]=v;return true end,read=function(_,p)return files[p]end,exists=function(_,p)return files[p]~=nil end,chmod=function()end,remove=function(_,p)files[p]=nil end}
+local r={spawn_script=function()return 0 end,cancel_http_async=function(_,paths)stopped[#stopped+1]=paths;return true end}
+local h=require('services.http').new({runner=r,storage=s,dir='/tmp/test',now=function()return 1 end});local called=0;local id=h:request({url='https://example.test',group='old'},function(v)assert(v.error=='cancelled');called=called+1 end);local keep=h:request({url='https://example.test',priority=true},function()error('must not cancel playback')end)
+h:cancel_group('old');assert(called==1 and not h.jobs[id] and h.jobs[keep] and #stopped==1 and files[stopped[1].cancel]);h:cancel_group('old');assert(called==1)
+local online=require('soundring.lyrics_online');local previous=online.fetch;local callbacks={};online.fetch=function(o,t,cb)o.http:request({url='https://example.test'},function()end);callbacks[t.id]=cb end
+local Session=require('soundring.lyrics_session');local session=Session.new({http=h,json={},load_choice=function()end,save_choice=function()return true end,on_change=function()end});session:set_track({id='a',name='A'});local before=0;for _ in pairs(h.jobs)do before=before+1 end;session:set_track({id='b',name='B'});local after=0;for _ in pairs(h.jobs)do after=after+1 end;assert(after==before and h.jobs[keep]);online.fetch=previous
+print('Selective async cancellation: old lyric requests cancelled, playback retained, callback once')

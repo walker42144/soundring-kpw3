@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "name": "SoundRing",
+      "priority": 1,
+      "items": [
+        {
+          "name": "启动 SoundRing",
+          "priority": 1,
+          "action": "sh /mnt/us/extensions/soundring/launch.sh",
+          "params": "",
+          "exitmenu": true,
+          "status": false
+        }
+      ]
+    }
+  ]
+}
