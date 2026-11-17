@@ -22,12 +22,14 @@ function M.new(o)
   for _,job in ipairs(self.pending)do if not job.cancelled then cancel(job);job.cancelled=true end end
   local spotify_ok=type(url)=='string' and url:match('^https://i%.scdn%.co/image/[%w]+$');local netease_ok=M.netease_url(url);if netease_ok then url=netease_ok end
   if not spotify_ok and not netease_ok then callback(nil,'unsupported_cover_url');return end
+  local cache_id=spotify_ok and url:match('/image/([%w]+)$') or nil
+  if o.cache and cache_id then local ok,path=pcall(o.cache.get,o.cache,cache_id);if ok and path then if self.current and not self.current_cached then o.storage:remove(self.current) end;self.current=path;self.current_cached=true;self.current_id=cache_id;callback(path);return end end
   local function request(attempt)
   o.http:request({url=url,method='GET',timeout=15,max_bytes=2097152,group='cover-'..tostring(self)},function(r)
    if gen~=self.generation then return end
    if r and r.error=='request queue full' and attempt==0 then self.retry={generation=gen,at=(o.now or os.time)()+2,run=function()request(1)end};return end
    if not r or not r.ok or not r.body or #r.body==0 then callback(nil,'cover_download_failed');return end
-   local prefix=o.dir..'/'..(o.prefix or 'cover')..'-'..gen;local job={generation=gen,input=prefix..'.img',output=prefix..'.gray',script=prefix..'.sh',worker=prefix..'.worker.pid',cancel=prefix..'.cancel',done=prefix..'.done',rc=prefix..'.rc',callback=callback,started=(o.now or os.time)()}
+   local prefix=o.dir..'/'..(o.prefix or 'cover')..'-'..gen;local job={generation=gen,input=prefix..'.img',output=prefix..'.gray',script=prefix..'.sh',worker=prefix..'.worker.pid',cancel=prefix..'.cancel',done=prefix..'.done',rc=prefix..'.rc',callback=callback,cache_id=cache_id,started=(o.now or os.time)()}
    if not o.storage:write(job.input,r.body) then callback(nil,'cover_write_failed');return end
    local q=util.shell_quote;local cleanup='rm -f '..table.concat({q(job.input),q(job.output),q(job.done),q(job.rc),q(job.cancel),q(job.script),q(job.worker)},' ')
    local command=(o.runner.timeout_script and ('sh '..q(o.runner.timeout_script)..' 12 ') or '')..q(o.converter)..' '..q(job.input)..' '..q(job.output)..' 600 600'
@@ -49,7 +51,9 @@ function M.new(o)
     local timed_out=not o.storage:exists(job.done) and not job.failed
     if timed_out then cancel(job) else for _,p in ipairs({job.input,job.script,job.done,job.rc,job.worker,job.cancel})do o.storage:remove(p) end end
     if ok and job.generation==self.generation and not job.cancelled then
-     if self.current then o.storage:remove(self.current) end;self.current=job.output;job.callback(job.output)
+     local path;if o.cache and job.cache_id then local raw=o.storage:read(job.output,360001);if raw and #raw==360000 then local cached_ok,cached=pcall(o.cache.put,o.cache,job.cache_id,raw,self.current_cached and self.current_id or nil);if cached_ok then path=cached end end end
+     if self.current and not self.current_cached then o.storage:remove(self.current) end
+     if path then o.storage:remove(job.output);self.current=path;self.current_cached=true;self.current_id=job.cache_id else self.current=job.output;self.current_cached=false;self.current_id=nil end;job.callback(self.current)
     else if not timed_out then o.storage:remove(job.output) end;if job.generation==self.generation and not job.cancelled then job.callback(nil,'cover_decode_failed') end end
    else keep[#keep+1]=job end
   end
@@ -60,7 +64,7 @@ function M.new(o)
   self.retry=nil
   for _,job in ipairs(self.pending)do if not job.cancelled then cancel(job);job.cancelled=true end end
   if o.http.cancel_group then o.http:cancel_group('cover-'..tostring(self)) end
-  if self.current then o.storage:remove(self.current);self.current=nil end
+  if self.current and not self.current_cached then o.storage:remove(self.current) end;self.current=nil;self.current_cached=false;self.current_id=nil
  end
  return self
 end

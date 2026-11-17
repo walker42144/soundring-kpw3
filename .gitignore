@@ -5,6 +5,7 @@ soundring-config.json
 soundring-token.json
 lyric-choices.json
 lyrics-cache/
+cover-cache/
 artists/
 logs/
 assets/fonts/MiSans-Regular.ttf

@@ -2,6 +2,12 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## v0.1.3 — 2026-11-17
+
+- Add persistent local caching for converted Spotify album covers. Previously downloaded covers can be reused across songs and app restarts without another image download or conversion.
+- Limit cached cover images to 256 MiB and evict least recently used entries as needed, protecting the currently displayed cover. A missing, invalid or unavailable cache falls back to the existing download flow. Cache metadata and listening-related data remain private and are excluded from release bundles.
+- Portable tests cover cache hits, restart persistence, eviction, malformed index or image size, storage errors and stale network responses. The user reported normal operation on one KPW3 after deployment; long-duration use and loading-speed improvements have not been measured.
+
 ## v0.1.2 — 2026-11-17
 
 - Fix a freeze when a selected lyric or translation contains an incomplete timestamp. Malformed lines are skipped, while valid lines remain available.
