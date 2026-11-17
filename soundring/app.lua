@@ -19,7 +19,7 @@ function M.new(o)
  assert(o and o.spotify and o.http and o.json and o.load_choice and o.save_choice)
  local self=setmetatable({o=o,state={page='now',status='loading',lyrics_visible=false,items={},playing=false},track_generation=0,request_generation=0},App)
  self.lyrics=LyricsSession.new({http=o.http,json=o.json,now=o.now,load_choice=o.load_choice,save_choice=o.save_choice,load_cache=o.load_cache,save_cache=o.save_cache,load_local=o.load_local,save_artist_alias=o.save_artist_alias,lyrics_source=o.lyrics_source,on_change=function(s)
-  self.state.lyrics=s;if s.status=='synced' then self.state.lyric_lines=Lyrics.with_translation(s.lrc,s.translation);if self.state.page=='lyrics_search' then self.state.page='now';self.state.lyrics_visible=true end else self.state.lyric_lines=nil end;self:changed()
+  self.state.lyrics=s;if s.status=='synced' then local ok,lines=pcall(Lyrics.with_translation,s.lrc,s.translation);if not ok then if self.o.log then self.o.log:warn('lyrics translation parsing failed; showing original only') end;ok,lines=pcall(Lyrics.parse,s.lrc) end;self.state.lyric_lines=ok and lines or {};if self.state.page=='lyrics_search' then self.state.page='now';self.state.lyrics_visible=true end else self.state.lyric_lines=nil end;self:changed()
  end})
  return self
 end

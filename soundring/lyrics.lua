@@ -2,14 +2,23 @@
 local M = {}
 function M.parse(text)
     local out, sequence = {}, 0
-    for line in ((text or '') .. '\n'):gmatch('(.-)\r?\n') do
-        local body = line:gsub('^%s*(%b[])', '', 1)
-        while body:match('^%s*%[%d+:%d') do body = body:gsub('^%s*(%b[])', '', 1) end
+    if type(text) ~= 'string' or #text > 524288 then return out end
+    local line_count = 0
+    for line in (text .. '\n'):gmatch('(.-)\r?\n') do
+        line_count = line_count + 1
+        if line_count > 4096 or sequence >= 4096 then break end
+        local body, malformed, tags = line:gsub('^%s*(%b[])', '', 1), #line > 8192, 0
+        while not malformed and body:match('^%s*%[%d+:%d') do
+            local next_body, count = body:gsub('^%s*(%b[])', '', 1)
+            tags = tags + 1
+            if count == 0 or tags > 128 then malformed = true else body = next_body end
+        end
         body = body:match('^%s*(.-)%s*$') or ''
-        if body ~= '' then
+        if not malformed and body ~= '' then
             for minute, sec in line:gmatch('%[(%d+):(%d+%.?%d*)%]') do
                 local value = tonumber(sec)
-                if value and value < 60 then
+                if sequence >= 4096 then break end
+                if value and value < 60 and tonumber(minute) and tonumber(minute) < 100000 then
                     sequence = sequence + 1
                     out[#out+1] = {ms = math.floor((tonumber(minute)*60+value)*1000+0.5), text = body, order = sequence}
                 end
@@ -35,12 +44,13 @@ function M.with_translation(original, translated)
  local lines=M.parse(original);local translations=M.parse(translated);local j=1
  -- Infer a uniform offset only from multiple isolated, consistent anchors.
  -- A single pair or densely spaced lyrics are insufficient evidence.
- local offsets={};local last=0
+ local offsets={};local last=0;local first_possible=1
  for i,line in ipairs(lines) do
+  while translations[first_possible] and translations[first_possible].ms < line.ms-1500 do first_possible=first_possible+1 end
   local before=lines[i-1];local after=lines[i+1]
   if (not before or line.ms-before.ms>3000) and (not after or after.ms-line.ms>3000) then
    local best,dist
-   for k=last+1,#translations do local delta=translations[k].ms-line.ms;local d=math.abs(delta);if delta>1500 then break end;if d<=1500 and (not dist or d<dist) then best=k;dist=d end end
+   for k=math.max(last+1,first_possible),#translations do local delta=translations[k].ms-line.ms;local d=math.abs(delta);if delta>1500 then break end;if d<=1500 and (not dist or d<dist) then best=k;dist=d end end
    if best then offsets[#offsets+1]=translations[best].ms-line.ms;last=best end
   end
  end

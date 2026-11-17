@@ -2,6 +2,13 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## v0.1.2 — 2026-11-17
+
+- Fix a freeze when a selected lyric or translation contains an incomplete timestamp. Malformed lines are skipped, while valid lines remain available.
+- Bound lyric input size, line length, line count, timestamp tags and parsed entries; guard translation parsing and fall back to the original lyrics if it raises an error. Speed up translation timestamp matching for large inputs.
+- Resize the Recovery cover to the same 600 × 800 canvas as the main app while retaining its distinct symbol. Kindle cover caches may delay the new image.
+- Portable regression tests passed, including the previously failing malformed translation. The user confirmed the updated app worked on one KPW3; this is not an endurance or full device compatibility test. Existing authorization and lyric choices are retained.
+
 ## v0.1.1 — 2026-11-17
 
 The second public release focuses on playback correctness, artist and lyric reliability, storage protection, and safer recovery.
